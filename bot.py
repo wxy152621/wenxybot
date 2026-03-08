@@ -408,6 +408,11 @@ async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if user:
         await update.message.reply_text(f"Your Telegram user id is: {user.id}")
 
+async def ping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_allowed(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+    await update.message.reply_text("pong from GitHub v1")
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_allowed(update):
@@ -553,6 +558,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("id", get_id))
+    app.add_handler(CommandHandler("ping", ping_cmd))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CommandHandler("cmd", cmd))
     app.add_handler(CommandHandler("open", open_cmd))
