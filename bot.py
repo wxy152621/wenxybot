@@ -124,17 +124,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     help_text = (
         "Ready.\n\n"
-        "/id - 鏌ョ湅浣犵殑 user id\n"
-        "/ping - 娴嬭瘯褰撳墠鐗堟湰\n"
-        "/reset - 娓呯┖涓婁笅鏂嘰n"
-        "/cmd <command> - 鎵ц鐧藉悕鍗曞懡浠n"
-        "/open <App鎴朥RL>\n"
+        "/id - 查看你的 user id\n"
+        "/ping - 测试当前版本\n"
+        "/reset - 清空上下文\n"
+        "/cmd <command> - 执行白名单命令\n"
+        "/open <App或URL>\n"
         "/say <text>\n"
         "/notify <text>\n"
-        "/agent <鑷劧璇█>\n"
-        "/status - 鏌ョ湅鐘舵€乗n"
-        "/restart - 閲嶅惎 bot\n"
-        "/update - git pull + 璇硶妫€鏌� + 閲嶅惎"
+        "/agent <自然语言>\n"
+        "/status - 查看状态\n"
+        "/restart - 重启 bot\n"
+        "/update - git pull + 语法检查 + 重启"
     )
     await update.message.reply_text(help_text)
 
@@ -202,7 +202,7 @@ async def open_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     target = " ".join(context.args).strip()
     if not target:
-        await update.message.reply_text("Usage: /open <App鎴朥RL>")
+        await update.message.reply_text("Usage: /open <App或URL>")
         return
 
     try:
@@ -267,7 +267,7 @@ async def agent_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     prompt = " ".join(context.args).strip()
     if not prompt:
-        await update.message.reply_text("Usage: /agent <鑷劧璇█>")
+        await update.message.reply_text("Usage: /agent <自然语言>")
         return
 
     await update.message.reply_text("Thinking...")
