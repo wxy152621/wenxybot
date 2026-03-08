@@ -511,17 +511,33 @@ async def screenshot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("未找到 screencapture。")
         return
 
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         image_path = Path(tmp.name)
 
     try:
-        result = run_shell(f"{shlex.quote(tool)} -x {shlex.quote(str(image_path))}", timeout=30)
+        # 使用 JPG + 降低质量，避免 Telegram photo 10MB 限制
+        # -x 静默截图，-t jpg 输出 jpg，-C 去掉鼠标光标
+        result = run_shell(
+            f"{shlex.quote(tool)} -x -C -t jpg {shlex.quote(str(image_path))}",
+            timeout=30,
+        )
         if result.returncode != 0 or not image_path.exists():
             await update.message.reply_text(trim_text(format_proc_output(result, "截图失败")))
             return
 
-        with image_path.open("rb") as f:
-            await update.message.reply_photo(photo=f, caption="当前屏幕截图")
+        file_size = image_path.stat().st_size
+
+        # 先尝试按 photo 发送；如果还是太大，则自动按 document 发送
+        if file_size <= 9 * 1024 * 1024:
+            with image_path.open("rb") as f:
+                await update.message.reply_photo(photo=f, caption="当前屏幕截图")
+        else:
+            with image_path.open("rb") as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename="screenshot.jpg",
+                    caption=f"截图较大，已按文件发送（{file_size / 1024 / 1024:.2f} MB）",
+                )
     except Exception as e:
         await update.message.reply_text(f"screenshot failed: {e}")
     finally:
