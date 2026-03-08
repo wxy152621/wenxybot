@@ -390,6 +390,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     help_text = (
         "Ready.\n\n"
         "/id - 查看你的 user id\n"
+        "/ping - 测试当前版本\n"
         "/reset - 清空上下文\n"
         "/cmd <command> - 执行白名单命令\n"
         "/open <App或URL>\n"
