@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import shlex
 import subprocess
@@ -71,6 +72,8 @@ def run_shell(command: str, cwd: Path | None = None, timeout: int = 180) -> subp
         cwd=str(cwd) if cwd else None,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
 
