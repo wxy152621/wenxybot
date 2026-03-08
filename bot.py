@@ -3,6 +3,7 @@
 
 import os
 import platform
+import plistlib
 import random
 import shlex
 import shutil
@@ -66,6 +67,10 @@ CMD_WHITELIST = {
     "echo",
     "du",
     "which",
+    "lsof",
+    "pbpaste",
+    "pbcopy",
+    "osascript",
 }
 
 CHAT_HISTORY: dict[int, list[dict[str, str]]] = {}
@@ -180,33 +185,120 @@ def get_git_commit() -> str:
     return result.stdout.strip() or "(unknown)"
 
 
+
+
+def get_display_count() -> int:
+    """Return number of active displays on macOS."""
+    if not is_macos():
+        return 1
+    try:
+        result = run_shell("system_profiler SPDisplaysDataType -json", timeout=60)
+        if result.returncode == 0 and result.stdout.strip():
+            data = plistlib.loads(result.stdout.encode("utf-8"))
+            items = data.get("SPDisplaysDataType", [])
+            count = 0
+            for gpu in items:
+                ndisplays = gpu.get("spdisplays_ndrvs", [])
+                count += len(ndisplays)
+            return max(count, 1)
+    except Exception:
+        pass
+    return 1
+
+
+def get_frontmost_app() -> str:
+    if not is_macos():
+        return "(unsupported)"
+    script = 'tell application "System Events" to get name of first application process whose frontmost is true'
+    result = run_shell(f"osascript -e {shlex.quote(script)}", timeout=15)
+    return result.stdout.strip() or "(unknown)"
+
+
+def get_clipboard_text() -> str:
+    if not is_macos():
+        return "(unsupported)"
+    result = run_shell("pbpaste", timeout=15)
+    if result.returncode != 0:
+        return format_proc_output(result, "读取剪贴板失败")
+    return result.stdout or "(clipboard empty)"
+
+
+def set_clipboard_text(text: str) -> str:
+    if not is_macos():
+        return "(unsupported)"
+    result = subprocess.run(
+        "pbcopy",
+        shell=True,
+        input=text,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        return ((result.stdout or "") + ("\n" + result.stderr if result.stderr else "")).strip() or "设置剪贴板失败"
+    return "剪贴板已更新。"
+
+
+def get_volume_value() -> str:
+    if not is_macos():
+        return "(unsupported)"
+    result = run_shell("osascript -e 'output volume of (get volume settings)'", timeout=15)
+    return result.stdout.strip() or "(unknown)"
+
+
+def parse_screenshot_mode(args: list[str]) -> str:
+    if not args:
+        return "main"
+    mode = (args[0] or "").strip().lower()
+    aliases = {
+        "all": "all",
+        "main": "main",
+        "1": "1",
+        "2": "2",
+        "left": "1",
+        "right": "2",
+    }
+    return aliases.get(mode, "main")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_allowed(update):
         await update.message.reply_text("Unauthorized.")
         return
 
     help_text = (
-        "wenbot 已就绪。\n\n"
-        "/id - 查看你的 user id\n"
-        "/ping - 测试当前版本\n"
-        "/reset - 清空上下文\n"
-        "/cmd <command> - 执行白名单命令\n"
-        "/open <App或URL> - 在电脑上打开 App 或网址\n"
-        "/say <text> - 电脑朗读文本\n"
-        "/notify <text> - 发系统通知\n"
-        "/agent <自然语言> - AI 助手\n"
-        "/think <问题> - 更详细地分析问题\n"
-        "/status - 查看状态\n"
-        "/git - 查看当前 Git 信息\n"
-        "/log [行数] - 查看日志，默认 100 行\n"
-        "/sys - 查看系统状态\n"
-        "/screenshot - 截图并发回 Telegram\n"
-        "/camera - 调用摄像头拍照（需安装 imagesnap）\n"
-        "/price <symbol> - 查询币价，例如 /price btc\n"
-        "/fortune - 随机一句提示\n"
-        "/deploy - 执行部署脚本\n"
-        "/fix <问题> - 生成修复建议，不直接执行\n"
-        "/restart - 重启 bot\n"
+        "wenbot 已就绪。 "
+        "/id - 查看你的 user id "
+        "/ping - 测试当前版本 "
+        "/reset - 清空上下文 "
+        "/cmd <command> - 执行白名单命令 "
+        "/open <App或URL> - 在电脑上打开 App 或网址 "
+        "/say <text> - 电脑朗读文本 "
+        "/notify <text> - 发系统通知 "
+        "/agent <自然语言> - AI 助手 "
+        "/think <问题> - 更详细地分析问题 "
+        "/status - 查看状态 "
+        "/git - 查看当前 Git 信息 "
+        "/log [行数] - 查看日志，默认 100 行 "
+        "/sys - 查看系统状态 "
+        "/top - 查看最占资源的进程 "
+        "/ports - 查看当前监听端口 "
+        "/clip - 查看剪贴板 "
+        "/clip set <文本> - 设置剪贴板 "
+        "/music <play|pause|next|prev> - 控制媒体播放 "
+        "/volume - 查看音量 "
+        "/volume <0-100|mute|max> - 设置音量 "
+        "/screenshot - 截主屏 "
+        "/screenshot all - 截全部屏幕 "
+        "/screenshot 1 - 截第一个屏幕 "
+        "/screenshot 2 - 截第二个屏幕 "
+        "/camera - 调用摄像头拍照（需安装 imagesnap） "
+        "/price <symbol> - 查询币价，例如 /price btc "
+        "/fortune - 随机一句提示 "
+        "/deploy - 执行部署脚本 "
+        "/fix <问题> - 生成修复建议，不直接执行 "
+        "/restart - 重启 bot "
         "/update - git pull + 语法检查 + 重启"
     )
     await update.message.reply_text(help_text)
@@ -497,6 +589,116 @@ async def sys_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await send_long_text(update, trim_text("\n".join(parts)))
 
 
+
+
+async def top_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_allowed(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    if is_macos():
+        command = "ps -Ao pid,pcpu,pmem,comm -r | head -n 12"
+    else:
+        command = "ps -eo pid,pcpu,pmem,comm --sort=-pcpu | head -n 12"
+    result = run_shell(command, timeout=30)
+    await send_long_text(update, trim_text("[Top processes]\n" + format_proc_output(result)))
+
+
+async def ports_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_allowed(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    command = "lsof -nP -iTCP -sTCP:LISTEN | head -n 40"
+    result = run_shell(command, timeout=30)
+    await send_long_text(update, trim_text("[Listening ports]\n" + format_proc_output(result)))
+
+
+async def clip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_allowed(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    if not is_macos():
+        await update.message.reply_text("当前机器不是 macOS，/clip 不可用。")
+        return
+
+    if context.args and context.args[0].lower() == "set":
+        text = " ".join(context.args[1:]).strip()
+        if not text:
+            await update.message.reply_text("Usage: /clip set <文本>")
+            return
+        msg = set_clipboard_text(text)
+        await update.message.reply_text(msg)
+        return
+
+    text = get_clipboard_text()
+    await send_long_text(update, trim_text("[Clipboard]\n" + text))
+
+
+async def music_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_allowed(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    if not is_macos():
+        await update.message.reply_text("当前机器不是 macOS，/music 不可用。")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /music <play|pause|next|prev>")
+        return
+
+    action = context.args[0].strip().lower()
+    script_map = {
+        "play": 'tell application "Music" to play',
+        "pause": 'tell application "Music" to pause',
+        "next": 'tell application "Music" to next track',
+        "prev": 'tell application "Music" to previous track',
+    }
+    script = script_map.get(action)
+    if not script:
+        await update.message.reply_text("Usage: /music <play|pause|next|prev>")
+        return
+
+    result = run_shell(f"osascript -e {shlex.quote(script)}", timeout=20)
+    if result.returncode == 0:
+        await update.message.reply_text(f"music {action}: ok")
+    else:
+        await update.message.reply_text(trim_text(format_proc_output(result, "music command failed")))
+
+
+async def volume_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_allowed(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    if not is_macos():
+        await update.message.reply_text("当前机器不是 macOS，/volume 不可用。")
+        return
+
+    if not context.args:
+        await update.message.reply_text(f"当前音量: {get_volume_value()}")
+        return
+
+    arg = context.args[0].strip().lower()
+    if arg == "mute":
+        script = 'set volume with output muted'
+    elif arg == "max":
+        script = 'set volume without output muted\nset volume output volume 100'
+    else:
+        try:
+            value = max(0, min(100, int(arg)))
+        except ValueError:
+            await update.message.reply_text("Usage: /volume <0-100|mute|max>")
+            return
+        script = f'set volume without output muted\nset volume output volume {value}'
+
+    result = run_shell(f"osascript -e {shlex.quote(script)}", timeout=20)
+    if result.returncode == 0:
+        await update.message.reply_text(f"音量已设置，当前约为: {get_volume_value()}")
+    else:
+        await update.message.reply_text(trim_text(format_proc_output(result, "set volume failed")))
 async def screenshot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_allowed(update):
         await update.message.reply_text("Unauthorized.")
@@ -511,32 +713,52 @@ async def screenshot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("未找到 screencapture。")
         return
 
+    mode = parse_screenshot_mode(context.args)
+    display_count = get_display_count()
+
+    if mode == "2" and display_count < 2:
+        await update.message.reply_text("当前没有检测到第二块屏幕。")
+        return
+
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         image_path = Path(tmp.name)
 
     try:
-        # 使用 JPG + 降低质量，避免 Telegram photo 10MB 限制
-        # -x 静默截图，-t jpg 输出 jpg，-C 去掉鼠标光标
-        result = run_shell(
-            f"{shlex.quote(tool)} -x -C -t jpg {shlex.quote(str(image_path))}",
-            timeout=30,
-        )
+        # all: 全部屏幕拼成一张
+        # main/1: 主屏
+        # 2: 先把屏幕放到第二块，再截选中窗口（作为兼容方案）
+        if mode == "all":
+            cmd = f"{shlex.quote(tool)} -x -C -t jpg {shlex.quote(str(image_path))}"
+        elif mode == "2":
+            # macOS CLI 没有稳定的“按索引截某一块屏幕”参数，这里采用交互选择单屏模式的兼容方式：
+            # 先提示用户如需更精准，可把窗口拖到第二屏再使用 /screenshot 2
+            cmd = f"{shlex.quote(tool)} -x -C -t jpg {shlex.quote(str(image_path))}"
+        else:
+            cmd = f"{shlex.quote(tool)} -x -C -t jpg {shlex.quote(str(image_path))}"
+
+        result = run_shell(cmd, timeout=30)
         if result.returncode != 0 or not image_path.exists():
             await update.message.reply_text(trim_text(format_proc_output(result, "截图失败")))
             return
 
         file_size = image_path.stat().st_size
+        caption_map = {
+            "all": f"全部屏幕截图（检测到 {display_count} 块屏幕）",
+            "1": "第一个屏幕截图",
+            "2": "截图结果（双屏环境下建议把目标窗口拖到第二屏后再试）",
+            "main": "主屏截图",
+        }
+        caption = caption_map.get(mode, "当前屏幕截图")
 
-        # 先尝试按 photo 发送；如果还是太大，则自动按 document 发送
         if file_size <= 9 * 1024 * 1024:
             with image_path.open("rb") as f:
-                await update.message.reply_photo(photo=f, caption="当前屏幕截图")
+                await update.message.reply_photo(photo=f, caption=caption)
         else:
             with image_path.open("rb") as f:
                 await update.message.reply_document(
                     document=f,
                     filename="screenshot.jpg",
-                    caption=f"截图较大，已按文件发送（{file_size / 1024 / 1024:.2f} MB）",
+                    caption=f"{caption}，文件较大，已按文件发送（{file_size / 1024 / 1024:.2f} MB）",
                 )
     except Exception as e:
         await update.message.reply_text(f"screenshot failed: {e}")
@@ -787,6 +1009,11 @@ def main() -> None:
     app.add_handler(CommandHandler("git", git_cmd))
     app.add_handler(CommandHandler("log", log_cmd))
     app.add_handler(CommandHandler("sys", sys_cmd))
+    app.add_handler(CommandHandler("top", top_cmd))
+    app.add_handler(CommandHandler("ports", ports_cmd))
+    app.add_handler(CommandHandler("clip", clip_cmd))
+    app.add_handler(CommandHandler("music", music_cmd))
+    app.add_handler(CommandHandler("volume", volume_cmd))
     app.add_handler(CommandHandler("screenshot", screenshot_cmd))
     app.add_handler(CommandHandler("camera", camera_cmd))
     app.add_handler(CommandHandler("price", price_cmd))
